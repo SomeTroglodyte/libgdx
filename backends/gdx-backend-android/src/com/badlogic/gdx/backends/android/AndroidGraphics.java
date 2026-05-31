@@ -16,6 +16,7 @@
 
 package com.badlogic.gdx.backends.android;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.hardware.display.DisplayManager;
 import android.opengl.GLSurfaceView;
@@ -26,6 +27,7 @@ import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.DisplayCutout;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.WindowManager.LayoutParams;
 import com.badlogic.gdx.AbstractGraphics;
 import com.badlogic.gdx.Application;
@@ -93,7 +95,7 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 	private float density = 1;
 
 	protected final AndroidApplicationConfiguration config;
-	private BufferFormat bufferFormat = new BufferFormat(8, 8, 8, 0, 16, 0, 0, false);
+	private BufferFormat bufferFormat;
 	private boolean isContinuous = true;
 
 	public AndroidGraphics (AndroidApplicationBase application, AndroidApplicationConfiguration config,
@@ -103,6 +105,8 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 
 	public AndroidGraphics (AndroidApplicationBase application, AndroidApplicationConfiguration config,
 		ResolutionStrategy resolutionStrategy, boolean focusableView) {
+		bufferFormat = new BufferFormat(config.r, config.g, config.b, config.a, config.depth, config.stencil, config.numSamples,
+			config.coverageSampling);
 		this.config = config;
 		this.app = application;
 		view = createGLSurfaceView(application, resolutionStrategy);
@@ -215,6 +219,36 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 			Gdx.gl20 = gl20;
 			Gdx.gl30 = gl30;
 		}
+	}
+
+	@Override
+	public boolean isGL31Available () {
+		return false;
+	}
+
+	@Override
+	public GL31 getGL31 () {
+		return null;
+	}
+
+	@Override
+	public void setGL31 (GL31 gl31) {
+
+	}
+
+	@Override
+	public boolean isGL32Available () {
+		return false;
+	}
+
+	@Override
+	public GL32 getGL32 () {
+		return null;
+	}
+
+	@Override
+	public void setGL32 (GL32 gl32) {
+
 	}
 
 	/** {@inheritDoc} */
@@ -395,6 +429,20 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 			running = false;
 			destroy = true;
 
+			view.queueEvent(new Runnable() {
+				@Override
+				public void run () {
+					if (!destroy) {
+						// destroy event already picked up by onDrawFrame
+						return;
+					}
+
+					// it's ok to call ApplicationListener's events
+					// from onDrawFrame because it's executing in GL thread
+					onDrawFrame(null);
+				}
+			});
+
 			while (destroy) {
 				try {
 					synch.wait();
@@ -408,6 +456,7 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 	@Override
 	public void onDrawFrame (javax.microedition.khronos.opengles.GL10 gl) {
 		long time = System.nanoTime();
+		if (lastFrameTime > time) lastFrameTime = time;
 		// After pause deltaTime can have somewhat huge value that destabilizes the mean, so let's cut it off
 		if (!resume) {
 			deltaTime = (time - lastFrameTime) / 1000000000.0f;
@@ -463,11 +512,7 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 			}
 
 			for (int i = 0; i < app.getExecutedRunnables().size; i++) {
-				try {
-					app.getExecutedRunnables().get(i).run();
-				} catch (Throwable t) {
-					t.printStackTrace();
-				}
+				app.getExecutedRunnables().get(i).run();
 			}
 			app.getInput().processEvents();
 			frameId++;
@@ -623,6 +668,7 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 		return new DisplayMode[] {getDisplayMode()};
 	}
 
+	@TargetApi(Build.VERSION_CODES.P)
 	protected void updateSafeAreaInsets () {
 		safeInsetLeft = 0;
 		safeInsetTop = 0;
@@ -631,7 +677,10 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
 			try {
-				DisplayCutout displayCutout = app.getApplicationWindow().getDecorView().getRootWindowInsets().getDisplayCutout();
+				View decorView = app.getApplicationWindow().getDecorView();
+				WindowInsets insets = decorView.getRootWindowInsets();
+				if (insets == null) return;
+				DisplayCutout displayCutout = insets.getDisplayCutout();
 				if (displayCutout != null) {
 					safeInsetRight = displayCutout.getSafeInsetRight();
 					safeInsetBottom = displayCutout.getSafeInsetBottom();
@@ -691,14 +740,9 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 		Display display;
 		DisplayMetrics metrics = new DisplayMetrics();
 
-		if (Build.VERSION.SDK_INT >= 17) {
-			DisplayManager displayManager = (DisplayManager)app.getContext().getSystemService(Context.DISPLAY_SERVICE);
-			display = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
-			display.getRealMetrics(metrics); // Deprecated but no direct equivalent
-		} else {
-			display = app.getWindowManager().getDefaultDisplay();
-			display.getMetrics(metrics); // Excludes system UI!
-		}
+		DisplayManager displayManager = (DisplayManager)app.getContext().getSystemService(Context.DISPLAY_SERVICE);
+		display = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
+		display.getRealMetrics(metrics); // Deprecated but no direct equivalent
 
 		int width = metrics.widthPixels;
 		int height = metrics.heightPixels;
@@ -765,6 +809,8 @@ public class AndroidGraphics extends AbstractGraphics implements Renderer {
 
 	@Override
 	public void setSystemCursor (SystemCursor systemCursor) {
+		View view = ((AndroidGraphics)app.getGraphics()).getView();
+		AndroidCursor.setSystemCursor(view, systemCursor);
 	}
 
 	private class AndroidDisplayMode extends DisplayMode {

@@ -42,7 +42,6 @@ import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Null;
 import com.badlogic.gdx.utils.ObjectSet;
 import com.badlogic.gdx.utils.Pool;
-import com.badlogic.gdx.utils.Pools;
 
 /** A select box (aka a drop-down list) allows a user to choose one of a number of values from a list. When inactive, the selected
  * value is displayed. When activated, it shows the list of values that may be selected.
@@ -53,7 +52,7 @@ import com.badlogic.gdx.utils.Pools;
  * {@link SelectBoxStyle#background}.
  * @author mzechner
  * @author Nathan Sweet */
-public class SelectBox<T> extends Widget implements Disableable {
+public class SelectBox<T> extends Widget implements Disableable, Styleable<SelectBox.SelectBoxStyle> {
 	static final Vector2 temp = new Vector2();
 
 	SelectBoxStyle style;
@@ -87,7 +86,7 @@ public class SelectBox<T> extends Widget implements Disableable {
 		selection.setActor(this);
 		selection.setRequired(true);
 
-		scrollPane = new SelectBoxScrollPane(this);
+		scrollPane = newScrollPane();
 
 		addListener(clickListener = new ClickListener() {
 			public boolean touchDown (InputEvent event, float x, float y, int pointer, int button) {
@@ -193,7 +192,7 @@ public class SelectBox<T> extends Widget implements Disableable {
 		} else
 			prefHeight = font.getCapHeight() - font.getDescent() * 2;
 
-		Pool<GlyphLayout> layoutPool = Pools.get(GlyphLayout.class);
+		Pool<GlyphLayout> layoutPool = POOLS.getPool(GlyphLayout.class);
 		GlyphLayout layout = layoutPool.obtain();
 		if (selectedPrefWidth) {
 			prefWidth = 0;
@@ -327,13 +326,14 @@ public class SelectBox<T> extends Widget implements Disableable {
 	/** Returns the pref width of the select box if the widest item was selected, for use when
 	 * {@link #setSelectedPrefWidth(boolean)} is true. */
 	public float getMaxSelectedPrefWidth () {
-		Pool<GlyphLayout> layoutPool = Pools.get(GlyphLayout.class);
+		Pool<GlyphLayout> layoutPool = POOLS.getPool(GlyphLayout.class);
 		GlyphLayout layout = layoutPool.obtain();
 		float width = 0;
 		for (int i = 0; i < items.size; i++) {
 			layout.setText(style.font, toString(items.get(i)));
 			width = Math.max(layout.width, width);
 		}
+		layoutPool.free(layout);
 		Drawable bg = style.background;
 		if (bg != null) width = Math.max(width + bg.getLeftWidth() + bg.getRightWidth(), bg.getMinWidth());
 		return width;
@@ -458,7 +458,10 @@ public class SelectBox<T> extends Widget implements Disableable {
 
 			addListener(new InputListener() {
 				public void exit (InputEvent event, float x, float y, int pointer, @Null Actor toActor) {
-					if (toActor == null || !isAscendantOf(toActor)) list.selection.set(selectBox.getSelected());
+					if (toActor == null || !isAscendantOf(toActor)) {
+						T selected = selectBox.getSelected();
+						if (selected != null) list.selection.set(selected);
+					}
 				}
 			});
 
@@ -529,11 +532,18 @@ public class SelectBox<T> extends Widget implements Disableable {
 				setY(stagePosition.y - height);
 			else
 				setY(stagePosition.y + selectBox.getHeight());
-			setX(stagePosition.x);
+
 			setHeight(height);
 			validate();
 			float width = Math.max(getPrefWidth(), selectBox.getWidth());
 			setWidth(width);
+
+			float x = stagePosition.x;
+			if (x + width > stage.getWidth()) {
+				x -= getWidth() - selectBox.getWidth() - 1;
+				if (x < 0) x = 0;
+			}
+			setX(x);
 
 			validate();
 			scrollTo(0, list.getHeight() - selectBox.getSelectedIndex() * itemHeight - itemHeight / 2, 0, 0, true, true);

@@ -117,7 +117,7 @@ public class G3dModelLoader extends ModelLoader<ModelLoader.ModelParameters> {
 					jsonPart.indices = meshPart.require("indices").asShortArray();
 					parts.add(jsonPart);
 				}
-				jsonMesh.parts = parts.toArray(ModelMeshPart.class);
+				jsonMesh.parts = parts.toArray(ModelMeshPart[]::new);
 				model.meshes.add(jsonMesh);
 			}
 		}
@@ -135,8 +135,8 @@ public class G3dModelLoader extends ModelLoader<ModelLoader.ModelParameters> {
 		} else if (type.equals("LINE_STRIP")) {
 			return GL20.GL_LINE_STRIP;
 		} else {
-			throw new GdxRuntimeException("Unknown primitive type '" + type
-				+ "', should be one of triangle, trianglestrip, line, linestrip, lineloop or point");
+			throw new GdxRuntimeException(
+				"Unknown primitive type '" + type + "', should be one of triangle, trianglestrip, line, linestrip or point");
 		}
 	}
 
@@ -168,7 +168,7 @@ public class G3dModelLoader extends ModelLoader<ModelLoader.ModelParameters> {
 					"Unknown vertex attribute '" + attr + "', should be one of position, normal, uv, tangent or binormal");
 			}
 		}
-		return vertexAttributes.toArray(VertexAttribute.class);
+		return vertexAttributes.toArray(VertexAttribute[]::new);
 	}
 
 	protected void parseMaterials (ModelData model, JsonValue json, String materialDir) {
@@ -328,7 +328,7 @@ public class G3dModelLoader extends ModelLoader<ModelLoader.ModelParameters> {
 
 				JsonValue bones = material.get("bones");
 				if (bones != null) {
-					nodePart.bones = new ArrayMap<String, Matrix4>(true, bones.size, String.class, Matrix4.class);
+					nodePart.bones = new ArrayMap<>(true, bones.size, String[]::new, Matrix4[]::new);
 					int j = 0;
 					for (JsonValue bone = bones.child; bone != null; bone = bone.next, j++) {
 						String nodeId = bone.getString("node", null);

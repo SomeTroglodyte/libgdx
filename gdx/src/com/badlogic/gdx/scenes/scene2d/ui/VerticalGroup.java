@@ -47,6 +47,7 @@ public class VerticalGroup extends WidgetGroup {
 	private float space, wrapSpace, fill, padTop, padLeft, padBottom, padRight;
 
 	public VerticalGroup () {
+		setTransform(false);
 		setTouchable(Touchable.childrenOnly);
 	}
 
@@ -124,8 +125,8 @@ public class VerticalGroup extends WidgetGroup {
 		}
 		prefWidth += padLeft + padRight;
 		if (round) {
-			prefWidth = Math.round(prefWidth);
-			prefHeight = Math.round(prefHeight);
+			prefWidth = (float)Math.ceil(prefWidth);
+			prefHeight = (float)Math.ceil(prefHeight);
 		}
 	}
 
@@ -194,7 +195,7 @@ public class VerticalGroup extends WidgetGroup {
 
 			y -= height + space;
 			if (round)
-				child.setBounds(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
+				child.setBounds((float)Math.floor(x), (float)Math.floor(y), (float)Math.ceil(width), (float)Math.ceil(height));
 			else
 				child.setBounds(x, y, width, height);
 
@@ -283,7 +284,7 @@ public class VerticalGroup extends WidgetGroup {
 
 			y -= height + space;
 			if (round)
-				child.setBounds(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
+				child.setBounds((float)Math.floor(x), (float)Math.floor(y), (float)Math.ceil(width), (float)Math.ceil(height));
 			else
 				child.setBounds(x, y, width, height);
 
@@ -451,7 +452,7 @@ public class VerticalGroup extends WidgetGroup {
 		return this;
 	}
 
-	/** @param fill 0 will use preferred height. */
+	/** @param fill 0 will use preferred width. */
 	public VerticalGroup fill (float fill) {
 		this.fill = fill;
 		return this;

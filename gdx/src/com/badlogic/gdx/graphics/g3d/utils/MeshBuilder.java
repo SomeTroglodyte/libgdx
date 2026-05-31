@@ -56,64 +56,64 @@ public class MeshBuilder implements MeshPartBuilder {
 	/** highest index mesh builder can get (64k - 1) */
 	public static final int MAX_INDEX = MAX_VERTICES - 1;
 
-	private final static ShortArray tmpIndices = new ShortArray();
-	private final static FloatArray tmpVertices = new FloatArray();
+	protected final static ShortArray tmpIndices = new ShortArray();
+	protected final static FloatArray tmpVertices = new FloatArray();
 
-	private final VertexInfo vertTmp1 = new VertexInfo();
-	private final VertexInfo vertTmp2 = new VertexInfo();
-	private final VertexInfo vertTmp3 = new VertexInfo();
-	private final VertexInfo vertTmp4 = new VertexInfo();
+	protected final VertexInfo vertTmp1 = new VertexInfo();
+	protected final VertexInfo vertTmp2 = new VertexInfo();
+	protected final VertexInfo vertTmp3 = new VertexInfo();
+	protected final VertexInfo vertTmp4 = new VertexInfo();
 
-	private final Color tempC1 = new Color();
+	protected final Color tempC1 = new Color();
 
 	/** The vertex attributes of the resulting mesh */
-	private VertexAttributes attributes;
+	protected VertexAttributes attributes;
 	/** The vertices to construct, no size checking is done */
-	private FloatArray vertices = new FloatArray();
+	protected FloatArray vertices = new FloatArray();
 	/** The indices to construct, no size checking is done */
-	private ShortArray indices = new ShortArray();
+	protected ShortArray indices = new ShortArray();
 	/** The size (in number of floats) of each vertex */
-	private int stride;
+	protected int stride;
 	/** The current vertex index, used for indexing */
-	private int vindex;
+	protected int vindex;
 	/** The offset in the indices array when begin() was called, used to define a meshpart. */
-	private int istart;
+	protected int istart;
 	/** The offset within an vertex to position */
-	private int posOffset;
+	protected int posOffset;
 	/** The size (in number of floats) of the position attribute */
-	private int posSize;
+	protected int posSize;
 	/** The offset within an vertex to normal, or -1 if not available */
-	private int norOffset;
+	protected int norOffset;
 	/** The offset within a vertex to binormal, or -1 if not available */
-	private int biNorOffset;
+	protected int biNorOffset;
 	/** The offset within a vertex to tangent, or -1 if not available */
-	private int tangentOffset;
+	protected int tangentOffset;
 	/** The offset within an vertex to color, or -1 if not available */
-	private int colOffset;
+	protected int colOffset;
 	/** The size (in number of floats) of the color attribute */
-	private int colSize;
+	protected int colSize;
 	/** The offset within an vertex to packed color, or -1 if not available */
-	private int cpOffset;
+	protected int cpOffset;
 	/** The offset within an vertex to texture coordinates, or -1 if not available */
-	private int uvOffset;
+	protected int uvOffset;
 	/** The meshpart currently being created */
-	private MeshPart part;
+	protected MeshPart part;
 	/** The parts created between begin and end */
-	private Array<MeshPart> parts = new Array<MeshPart>();
+	protected Array<MeshPart> parts = new Array<MeshPart>();
 	/** The color used if no vertex color is specified. */
-	private final Color color = new Color(Color.WHITE);
-	private boolean hasColor = false;
+	protected final Color color = new Color(Color.WHITE);
+	protected boolean hasColor = false;
 	/** The current primitiveType */
-	private int primitiveType;
+	protected int primitiveType;
 	/** The UV range used when building */
-	private float uOffset = 0f, uScale = 1f, vOffset = 0f, vScale = 1f;
-	private boolean hasUVTransform = false;
-	private float[] vertex;
+	protected float uOffset = 0f, uScale = 1f, vOffset = 0f, vScale = 1f;
+	protected boolean hasUVTransform = false;
+	protected float[] vertex;
 
-	private boolean vertexTransformationEnabled = false;
-	private final Matrix4 positionTransform = new Matrix4();
-	private final Matrix3 normalTransform = new Matrix3();
-	private final BoundingBox bounds = new BoundingBox();
+	protected boolean vertexTransformationEnabled = false;
+	protected final Matrix4 positionTransform = new Matrix4();
+	protected final Matrix3 normalTransform = new Matrix3();
+	protected final BoundingBox bounds = new BoundingBox();
 
 	/** @param usage bitwise mask of the {@link com.badlogic.gdx.graphics.VertexAttributes.Usage}, only Position, Color, Normal and
 	 *           TextureCoordinates is supported. */
@@ -260,7 +260,7 @@ public class MeshBuilder implements MeshPartBuilder {
 
 	/** End building the mesh and returns the mesh */
 	public Mesh end () {
-		return end(new Mesh(true, vertices.size / stride, indices.size, attributes));
+		return end(new Mesh(true, Math.min(vertices.size / stride, MAX_VERTICES), indices.size, attributes));
 	}
 
 	/** Clears the data being built up until now, including the vertices, indices and all parts. Must be called in between the call
@@ -469,8 +469,8 @@ public class MeshBuilder implements MeshPartBuilder {
 	private int lastIndex = -1;
 
 	@Override
-	public short lastIndex () {
-		return (short)lastIndex;
+	public int lastIndex () {
+		return lastIndex;
 	}
 
 	private final static Vector3 vTmp = new Vector3();
@@ -795,7 +795,7 @@ public class MeshBuilder implements MeshPartBuilder {
 
 		ensureIndices(indices.length);
 		for (int i = 0; i < indices.length; ++i)
-			index((short)(indices[i] + offset));
+			index((short)((indices[i] & 0xFFFF) + offset));
 	}
 
 	// TODO: The following methods are deprecated and will be removed in a future release

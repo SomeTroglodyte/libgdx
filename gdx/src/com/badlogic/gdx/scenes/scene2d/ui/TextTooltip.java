@@ -22,7 +22,9 @@ import com.badlogic.gdx.utils.Null;
 
 /** A tooltip that shows a label.
  * @author Nathan Sweet */
-public class TextTooltip extends Tooltip<Label> {
+public class TextTooltip extends Tooltip<Label> implements Styleable<TextTooltip.TextTooltipStyle> {
+	private TextTooltipStyle style;
+
 	public TextTooltip (@Null String text, Skin skin) {
 		this(text, TooltipManager.getInstance(), skin.get(TextTooltipStyle.class));
 	}
@@ -46,9 +48,7 @@ public class TextTooltip extends Tooltip<Label> {
 	public TextTooltip (@Null String text, final TooltipManager manager, TextTooltipStyle style) {
 		super(null, manager);
 
-		Label label = newLabel(text, style.label);
-		label.setWrap(true);
-		container.fill().setActor(label);
+		container.setActor(newLabel(text, style.label));
 
 		setStyle(style);
 	}
@@ -59,9 +59,20 @@ public class TextTooltip extends Tooltip<Label> {
 
 	public void setStyle (TextTooltipStyle style) {
 		if (style == null) throw new NullPointerException("style cannot be null");
-		container.getActor().setStyle(style.label);
+		this.style = style;
 		container.setBackground(style.background);
 		container.maxWidth(style.wrapWidth);
+
+		boolean wrap = style.wrapWidth != 0;
+		container.fill(wrap);
+
+		Label label = container.getActor();
+		label.setStyle(style.label);
+		label.setWrap(wrap);
+	}
+
+	public TextTooltipStyle getStyle () {
+		return style;
 	}
 
 	/** The style for a text tooltip, see {@link TextTooltip}.

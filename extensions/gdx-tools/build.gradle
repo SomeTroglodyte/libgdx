@@ -24,29 +24,21 @@ dependencies {
 sourceSets.main.resources.srcDirs = ["assets"]
 
 ext {
-	particles2DMainClass = "com.badlogic.gdx.tools.particleeditor.ParticleEditor"
 	particles3DMainClass = "com.badlogic.gdx.tools.flame.FlameMain"
 	hieroMainClass = "com.badlogic.gdx.tools.hiero.Hiero"
 	texturePackerMainClass = "com.badlogic.gdx.tools.texturepacker.TexturePacker"
+	tiledMapPackerMainClass = "com.badlogic.gdx.tiledmappacker.TiledMapPacker"
 
 	toolsAssetsDir = ["assets"]
 }
 
-task dist2DParticles (type: Jar) {
-	from files(sourceSets.main.java.outputDir)
-	from files(sourceSets.main.output.resourcesDir)
-	from {configurations.runtimeClasspath.collect {zipTree(it)}}
-	from files(toolsAssetsDir)
+tasks.register('dist3DParticles', Jar) {
+	dependsOn("build")
 
-	archiveFileName = "runnable-2D-particles.jar"
+	dependsOn configurations.runtimeClasspath
+	duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
 
-	manifest {
-		attributes 'Main-Class': particles2DMainClass
-	}
-}
-
-task dist3DParticles (type: Jar) {
-	from files(sourceSets.main.java.outputDir)
+	from files(sourceSets.main.java.classesDirectory)
 	from files(sourceSets.main.output.resourcesDir)
 	from {configurations.runtimeClasspath.collect {zipTree(it)}}
 	from files(toolsAssetsDir)
@@ -58,8 +50,13 @@ task dist3DParticles (type: Jar) {
 	}
 }
 
-task distHiero (type: Jar) {
-	from files(sourceSets.main.java.outputDir)
+tasks.register('distHiero', Jar) {
+	dependsOn("build")
+
+	dependsOn configurations.runtimeClasspath
+	duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+
+	from files(sourceSets.main.java.classesDirectory)
 	from files(sourceSets.main.output.resourcesDir)
 	from {configurations.runtimeClasspath.collect {zipTree(it)}}
 	from files(toolsAssetsDir)
@@ -71,8 +68,13 @@ task distHiero (type: Jar) {
 	}
 }
 
-task distTexturePacker (type: Jar) {
-	from files(sourceSets.main.java.outputDir)
+tasks.register('distTexturePacker', Jar) {
+	dependsOn("build")
+
+	dependsOn configurations.runtimeClasspath
+	duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+
+	from files(sourceSets.main.java.classesDirectory)
 	from files(sourceSets.main.output.resourcesDir)
 	from {configurations.runtimeClasspath.collect {zipTree(it)}}
 	from files(toolsAssetsDir)
@@ -84,13 +86,27 @@ task distTexturePacker (type: Jar) {
 	}
 }
 
-task buildRunnables (dependsOn: [
-	build,
-	dist2DParticles,
-	dist3DParticles,
-	distHiero,
-	distTexturePacker
-]) {
+tasks.register('distTiledMapPacker', Jar) {
+	dependsOn("build")
+
+	dependsOn configurations.runtimeClasspath
+	duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+
+	from files(sourceSets.main.java.classesDirectory)
+	from files(sourceSets.main.output.resourcesDir)
+	from {configurations.runtimeClasspath.collect {zipTree(it)}}
+	from files(toolsAssetsDir)
+
+	archiveFileName = "runnable-tiledmappacker.jar"
+
+	manifest {
+		attributes 'Main-Class': tiledMapPackerMainClass
+	}
+}
+
+tasks.register('buildRunnables') {
+	dependsOn("build")
+	dependsOn dist3DParticles, distHiero, distTexturePacker, distTiledMapPacker
 	doLast {
 		println "Building ye runnables"
 	}

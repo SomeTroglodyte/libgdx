@@ -28,7 +28,6 @@ import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener.ChangeEvent;
 import com.badlogic.gdx.scenes.scene2d.utils.Disableable;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.utils.Null;
-import com.badlogic.gdx.utils.Pools;
 
 /** A progress bar is a widget that visually displays the progress of some activity or a value within given range. The progress
  * bar has a range (min, max) and a stepping between each value it represents. The percentage of completeness typically starts out
@@ -41,7 +40,7 @@ import com.badlogic.gdx.utils.Pools;
  * width is 140, a relatively arbitrary size. These parameters are reversed for a vertical progress bar.
  * @author mzechner
  * @author Nathan Sweet */
-public class ProgressBar extends Widget implements Disableable {
+public class ProgressBar extends Widget implements Disableable, Styleable<ProgressBar.ProgressBarStyle> {
 	private ProgressBarStyle style;
 	float min, max, stepSize;
 	private float value, animateFromValue;
@@ -145,7 +144,7 @@ public class ProgressBar extends Widget implements Disableable {
 					x + (width - knobAfter.getMinWidth()) * 0.5f, //
 					y + position + knobHeightHalf, //
 					knobAfter.getMinWidth(),
-					total - (round ? Math.round(beforeHeight - knobHeightHalf) : beforeHeight - knobHeightHalf));
+					total - (round ? (float)Math.ceil(beforeHeight - knobHeightHalf) : beforeHeight - knobHeightHalf));
 			}
 			if (currentKnob != null) {
 				float w = currentKnob.getMinWidth(), h = currentKnob.getMinHeight();
@@ -178,7 +177,8 @@ public class ProgressBar extends Widget implements Disableable {
 				drawRound(batch, knobAfter, //
 					x + position + knobWidthHalf, //
 					y + (height - knobAfter.getMinHeight()) * 0.5f, //
-					total - (round ? Math.round(beforeWidth - knobWidthHalf) : beforeWidth - knobWidthHalf), knobAfter.getMinHeight());
+					total - (round ? (float)Math.ceil(beforeWidth - knobWidthHalf) : beforeWidth - knobWidthHalf),
+					knobAfter.getMinHeight());
 			}
 			if (currentKnob != null) {
 				float w = currentKnob.getMinWidth(), h = currentKnob.getMinHeight();
@@ -192,10 +192,10 @@ public class ProgressBar extends Widget implements Disableable {
 
 	private void drawRound (Batch batch, Drawable drawable, float x, float y, float w, float h) {
 		if (round) {
-			x = Math.round(x);
-			y = Math.round(y);
-			w = Math.round(w);
-			h = Math.round(h);
+			x = (float)Math.floor(x);
+			y = (float)Math.floor(y);
+			w = (float)Math.ceil(w);
+			h = (float)Math.ceil(h);
 		}
 		drawable.draw(batch, x, y, w, h);
 	}
@@ -262,9 +262,9 @@ public class ProgressBar extends Widget implements Disableable {
 		this.value = value;
 
 		if (programmaticChangeEvents) {
-			ChangeEvent changeEvent = Pools.obtain(ChangeEvent.class);
+			ChangeEvent changeEvent = POOLS.obtain(ChangeEvent.class);
 			boolean cancelled = fire(changeEvent);
-			Pools.free(changeEvent);
+			POOLS.free(changeEvent);
 			if (cancelled) {
 				this.value = oldValue;
 				return false;
@@ -376,6 +376,10 @@ public class ProgressBar extends Widget implements Disableable {
 	 * the slider. */
 	public void setProgrammaticChangeEvents (boolean programmaticChangeEvents) {
 		this.programmaticChangeEvents = programmaticChangeEvents;
+	}
+
+	public boolean getProgrammaticChangeEvents () {
+		return programmaticChangeEvents;
 	}
 
 	/** The style for a progress bar, see {@link ProgressBar}.

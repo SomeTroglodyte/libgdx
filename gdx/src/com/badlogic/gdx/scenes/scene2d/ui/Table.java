@@ -31,9 +31,9 @@ import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import com.badlogic.gdx.scenes.scene2d.utils.Layout;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.DefaultPool;
 import com.badlogic.gdx.utils.Null;
 import com.badlogic.gdx.utils.Pool;
-import com.badlogic.gdx.utils.Pools;
 
 /** A group that sizes and positions children using table constraints.
  * <p>
@@ -760,13 +760,13 @@ public class Table extends WidgetGroup {
 		return columnWidth[columnIndex];
 	}
 
-	/** Returns the min height of the specified column. */
+	/** Returns the min width of the specified column. */
 	public float getColumnMinWidth (int columnIndex) {
 		if (sizeInvalid) computeSize();
 		return columnMinWidth[columnIndex];
 	}
 
-	/** Returns the pref height of the specified column. */
+	/** Returns the pref width of the specified column. */
 	public float getColumnPrefWidth (int columnIndex) {
 		if (sizeInvalid) computeSize();
 		return columnPrefWidth[columnIndex];
@@ -1270,7 +1270,7 @@ public class Table extends WidgetGroup {
 
 	/** @author Nathan Sweet */
 	static public class DebugRect extends Rectangle {
-		static Pool<DebugRect> pool = Pools.get(DebugRect.class);
+		static Pool<DebugRect> pool = new DefaultPool<>(DebugRect::new);
 		Color color;
 	}
 

@@ -40,17 +40,17 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
  * @author Xoppa */
 public class ModelBuilder {
 	/** The model currently being build */
-	private Model model;
+	protected Model model;
 	/** The node currently being build */
-	private Node node;
+	protected Node node;
 	/** The mesh builders created between begin and end */
-	private Array<MeshBuilder> builders = new Array<MeshBuilder>();
+	protected Array<MeshBuilder> builders = new Array<MeshBuilder>();
 
 	private Matrix4 tmpTransform = new Matrix4();
 
 	private MeshBuilder getBuilder (final VertexAttributes attributes) {
 		for (final MeshBuilder mb : builders)
-			if (mb.getAttributes().equals(attributes) && mb.lastIndex() < Short.MAX_VALUE / 2) return mb;
+			if (mb.getAttributes().equals(attributes) && mb.lastIndex() < MeshBuilder.MAX_VERTICES / 2) return mb;
 		final MeshBuilder result = new MeshBuilder();
 		result.begin(attributes);
 		builders.add(result);

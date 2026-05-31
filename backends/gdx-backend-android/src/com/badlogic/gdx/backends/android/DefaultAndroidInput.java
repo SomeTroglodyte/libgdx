@@ -1,12 +1,12 @@
 /*******************************************************************************
  * Copyright 2011 See AUTHORS file.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *   http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,36 +16,64 @@
 
 package com.badlogic.gdx.backends.android;
 
+import android.animation.Animator;
+import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnCancelListener;
+import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
 import android.os.Handler;
-import android.os.VibrationEffect;
-import android.os.Vibrator;
+import android.text.InputFilter;
+import android.text.InputFilter.LengthFilter;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.TextUtils;
 import android.text.method.PasswordTransformationMethod;
+import android.util.DisplayMetrics;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.View;
 import android.view.View.OnGenericMotionListener;
 import android.view.View.OnKeyListener;
 import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.InputConnectionWrapper;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
-
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
+import android.widget.TextView.OnEditorActionListener;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import com.badlogic.gdx.AbstractInput;
 import com.badlogic.gdx.Application;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics.DisplayMode;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
+import com.badlogic.gdx.backends.android.keyboardheight.KeyboardHeightObserver;
+import com.badlogic.gdx.backends.android.keyboardheight.KeyboardHeightProvider;
+import com.badlogic.gdx.backends.android.keyboardheight.StandardKeyboardHeightProvider;
 import com.badlogic.gdx.backends.android.surfaceview.GLSurfaceView20;
+import com.badlogic.gdx.input.NativeInputConfiguration;
+import com.badlogic.gdx.input.NativeInputConfiguration.NativeInputCloseCallback;
+import com.badlogic.gdx.utils.GdxRuntimeException;
+import com.badlogic.gdx.utils.Null;
 import com.badlogic.gdx.utils.Pool;
 
 import java.util.ArrayList;
@@ -53,10 +81,10 @@ import java.util.Arrays;
 import java.util.List;
 
 /** An implementation of the {@link Input} interface for Android.
- * 
- * @author mzechner */
-/** @author jshapcot */
-public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
+ *
+ * @author mzechner
+ * @author jshapcot */
+public class DefaultAndroidInput extends AbstractInput implements AndroidInput, KeyboardHeightObserver {
 
 	static class KeyEvent {
 		static final int KEY_DOWN = 0;
@@ -75,6 +103,7 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		static final int TOUCH_DRAGGED = 2;
 		static final int TOUCH_SCROLLED = 3;
 		static final int TOUCH_MOVED = 4;
+		static final int TOUCH_CANCELLED = 5;
 
 		long timeStamp;
 		int type;
@@ -100,9 +129,9 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 
 	public static final int NUM_TOUCHES = 20;
 
-	ArrayList<OnKeyListener> keyListeners = new ArrayList();
-	ArrayList<KeyEvent> keyEvents = new ArrayList();
-	ArrayList<TouchEvent> touchEvents = new ArrayList();
+	ArrayList<OnKeyListener> keyListeners = new ArrayList<>();
+	ArrayList<KeyEvent> keyEvents = new ArrayList<>();
+	ArrayList<TouchEvent> touchEvents = new ArrayList<>();
 	int[] touchX = new int[NUM_TOUCHES];
 	int[] touchY = new int[NUM_TOUCHES];
 	int[] deltaX = new int[NUM_TOUCHES];
@@ -112,18 +141,17 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 	int[] realId = new int[NUM_TOUCHES];
 	float[] pressure = new float[NUM_TOUCHES];
 	final boolean hasMultitouch;
-	private boolean[] justPressedButtons = new boolean[NUM_TOUCHES];
+	private final boolean[] justPressedButtons = new boolean[NUM_TOUCHES];
 	private SensorManager manager;
 	public boolean accelerometerAvailable = false;
 	protected final float[] accelerometerValues = new float[3];
 	public boolean gyroscopeAvailable = false;
 	protected final float[] gyroscopeValues = new float[3];
-	private Handler handle;
+	private final Handler handle;
 	final Application app;
 	final Context context;
 	protected final AndroidTouchHandler touchHandler;
-	private int sleepTime = 0;
-	protected final Vibrator vibrator;
+	protected final AndroidHaptics haptics;
 	private boolean compassAvailable = false;
 	private boolean rotationVectorAvailable = false;
 	boolean keyboardAvailable;
@@ -135,29 +163,30 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 	private boolean justTouched = false;
 	private InputProcessor processor;
 	private final AndroidApplicationConfiguration config;
+	private final View view;
 	protected final Orientation nativeOrientation;
 	private long currentEventTimeStamp = 0;
+	private PredictiveBackHandler predictiveBackHandler;
 
 	private SensorEventListener accelerometerListener;
 	private SensorEventListener gyroscopeListener;
 	private SensorEventListener compassListener;
 	private SensorEventListener rotationVectorListener;
 
-	private final ArrayList<OnGenericMotionListener> genericMotionListeners = new ArrayList();
+	private final ArrayList<OnGenericMotionListener> genericMotionListeners = new ArrayList<>();
 	private final AndroidMouseHandler mouseHandler;
 
-	public DefaultAndroidInput (Application activity, Context context, Object view, AndroidApplicationConfiguration config) {
-		// we hook into View, for LWPs we call onTouch below directly from
-		// within the AndroidLivewallpaperEngine#onTouchEvent() method.
-		if (view instanceof View) {
-			View v = (View)view;
-			v.setOnKeyListener(this);
-			v.setOnTouchListener(this);
-			v.setFocusable(true);
-			v.setFocusableInTouchMode(true);
-			v.requestFocus();
-			v.setOnGenericMotionListener(this);
-		}
+	public DefaultAndroidInput (Application activity, Context context, View v, AndroidApplicationConfiguration config) {
+
+		this.view = v;
+
+		view.setOnKeyListener(this);
+		view.setOnTouchListener(this);
+		view.setFocusable(true);
+		view.setFocusableInTouchMode(true);
+		view.requestFocus();
+		view.setOnGenericMotionListener(this);
+
 		this.config = config;
 		this.mouseHandler = new AndroidMouseHandler();
 
@@ -166,11 +195,14 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		handle = new Handler();
 		this.app = activity;
 		this.context = context;
-		this.sleepTime = config.touchSleepTime;
 		touchHandler = new AndroidTouchHandler();
 		hasMultitouch = touchHandler.supportsMultitouch(context);
 
-		vibrator = (Vibrator)context.getSystemService(Context.VIBRATOR_SERVICE);
+		haptics = new AndroidHaptics(context);
+
+		if (Build.VERSION.SDK_INT >= 33 && context instanceof Activity) {
+			this.predictiveBackHandler = new PredictiveBackHandler();
+		}
 
 		int rotation = getRotation();
 		DisplayMode mode = app.getGraphics().getDisplayMode();
@@ -230,7 +262,7 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 				alert.setTitle(title);
 				final EditText input = new EditText(context);
 				if (keyboardType != OnscreenKeyboardType.Default) {
-					input.setInputType(getAndroidInputType(keyboardType));
+					input.setInputType(getAndroidInputType(keyboardType, false));
 				}
 				input.setHint(hint);
 				input.setText(text);
@@ -275,7 +307,7 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		});
 	}
 
-	public static int getAndroidInputType (OnscreenKeyboardType type) {
+	public static int getAndroidInputType (OnscreenKeyboardType type, boolean defaultDisableAutocorrection) {
 		int inputType;
 		switch (type) {
 		case NumberPad:
@@ -294,7 +326,12 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 			inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI;
 			break;
 		default:
-			inputType = InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
+			if (defaultDisableAutocorrection) {
+				inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+					| InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD;
+			} else {
+				inputType = InputType.TYPE_CLASS_TEXT;
+			}
 			break;
 		}
 		return inputType;
@@ -379,15 +416,11 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		synchronized (this) {
 			if (justTouched) {
 				justTouched = false;
-				for (int i = 0; i < justPressedButtons.length; i++) {
-					justPressedButtons[i] = false;
-				}
+				Arrays.fill(justPressedButtons, false);
 			}
 			if (keyJustPressed) {
 				keyJustPressed = false;
-				for (int i = 0; i < justPressedKeys.length; i++) {
-					justPressedKeys[i] = false;
-				}
+				Arrays.fill(justPressedKeys, false);
 			}
 
 			if (processor != null) {
@@ -428,6 +461,9 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 					case TouchEvent.TOUCH_DRAGGED:
 						processor.touchDragged(e.x, e.y, e.pointer);
 						break;
+					case TouchEvent.TOUCH_CANCELLED:
+						processor.touchCancelled(e.x, e.y, e.pointer, e.button);
+						break;
 					case TouchEvent.TOUCH_MOVED:
 						processor.mouseMoved(e.x, e.y);
 						break;
@@ -464,6 +500,7 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 
 	boolean requestFocus = true;
 
+	@SuppressLint("ClickableViewAccessibility")
 	@Override
 	public boolean onTouch (View view, MotionEvent event) {
 		if (requestFocus && view != null) {
@@ -475,50 +512,8 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		// synchronized in handler.postTouchEvent()
 		touchHandler.onTouch(event, this);
 
-		if (sleepTime != 0) {
-			try {
-				Thread.sleep(sleepTime);
-			} catch (InterruptedException e) {
-			}
-		}
 		return true;
 	}
-
-// TODO Seems unused. Delete when confirmed.
-// /** Called in {@link AndroidLiveWallpaperService} on tap
-// * @param x
-// * @param y */
-// public void onTap (int x, int y) {
-// postTap(x, y);
-// }
-//
-// /** Called in {@link AndroidLiveWallpaperService} on drop
-// * @param x
-// * @param y */
-// public void onDrop (int x, int y) {
-// postTap(x, y);
-// }
-//
-// protected void postTap (int x, int y) {
-// synchronized (this) {
-// TouchEvent event = usedTouchEvents.obtain();
-// event.timeStamp = System.nanoTime();
-// event.pointer = 0;
-// event.x = x;
-// event.y = y;
-// event.type = TouchEvent.TOUCH_DOWN;
-// touchEvents.add(event);
-//
-// event = usedTouchEvents.obtain();
-// event.timeStamp = System.nanoTime();
-// event.pointer = 0;
-// event.x = x;
-// event.y = y;
-// event.type = TouchEvent.TOUCH_UP;
-// touchEvents.add(event);
-// }
-// Gdx.app.getGraphics().requestRendering();
-// }
 
 	@Override
 	public boolean onKey (View v, int keyCode, android.view.KeyEvent e) {
@@ -617,8 +612,12 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		setOnscreenKeyboardVisible(visible, OnscreenKeyboardType.Default);
 	}
 
+	private boolean onscreenVisible = false;
+
 	@Override
 	public void setOnscreenKeyboardVisible (final boolean visible, final OnscreenKeyboardType type) {
+		if (isNativeInputOpen()) throw new GdxRuntimeException("Can't open keyboard if already open");
+		onscreenVisible = visible;
 		handle.post(new Runnable() {
 			public void run () {
 				InputMethodManager manager = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
@@ -640,25 +639,426 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		});
 	}
 
+	private RelativeLayout relativeLayoutField = null;
+
+	private int getSoftButtonsBarHeight () {
+		WindowManager windowManager = (WindowManager)context.getSystemService(Context.WINDOW_SERVICE);
+
+		DisplayMetrics metrics = new DisplayMetrics();
+		windowManager.getDefaultDisplay().getMetrics(metrics);
+		int usableHeight = metrics.heightPixels;
+		windowManager.getDefaultDisplay().getRealMetrics(metrics);
+		int realHeight = metrics.heightPixels;
+
+		if (realHeight > usableHeight) {
+			return realHeight - usableHeight;
+		}
+
+		return 0;
+	}
+
+	private int cachedHeight;
+	private boolean cachedVisible;
+
+	private void dispatchHeightAndVisibilityChangesToObserver (boolean visible, int height) {
+		if (observer != null) {
+			boolean visibilityChanged = visible != cachedVisible;
+			boolean heightChanged = height != cachedHeight;
+			if (visibilityChanged || heightChanged) {
+				if (visibilityChanged) {
+					if (visible) {
+						observer.onKeyboardShow(height);
+					} else {
+						observer.onKeyboardHide();
+					}
+				} else if (visible) {
+					// Height changed but visibility didn't, and keyboard is visible
+					observer.onKeyboardShow(height);
+				}
+
+				if (heightChanged) observer.onKeyboardHeightChanged(height);
+
+				cachedVisible = visible;
+				cachedHeight = height;
+			}
+		}
+	}
+
+	@Override
+	public void onKeyboardHeightChanged (boolean visible, int height, int leftInset, int rightInset, int orientation) {
+		KeyboardHeightProvider keyboardHeightProvider = ((AndroidApplication)app).getKeyboardHeightProvider();
+		boolean isStandardHeightProvider = keyboardHeightProvider instanceof StandardKeyboardHeightProvider;
+		if (config.useImmersiveMode && isStandardHeightProvider) {
+			height += getSoftButtonsBarHeight();
+		}
+
+		if (!isNativeInputOpen()) {
+			dispatchHeightAndVisibilityChangesToObserver(visible, height);
+			// Even if it is not visible, we want smooth animation when we actually start animating for visibility
+			if (relativeLayoutField != null) relativeLayoutField.setY(-height);
+			return;
+		}
+
+		if (height == 0 && isStandardHeightProvider && getEditTextForNativeInput().isPopupShowing()) {
+			// What should I say at this point, everything is busted on android
+			return;
+		}
+
+		if (!visible) {
+			closeTextInputField(false);
+			dispatchHeightAndVisibilityChangesToObserver(false, height);
+			relativeLayoutField.setY(height);
+			return;
+		}
+
+		dispatchHeightAndVisibilityChangesToObserver(true, height + getEditTextForNativeInput().getHeight());
+
+		// @off
+		if ((((Activity)context).getWindow().getAttributes().softInputMode & WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST) != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING) {
+			height = 0;
+		}
+
+		// This is legit insanity. If we want to animate over `scaleX`, FOR REASONS NO-ONE WILL EVER UNDERSTAND, the keyboard doesn't push the views up if `scaleX` < 1 at start.
+		// Unless you are very familiar with android views and animations, do _not_ touch this code, unless absolutely necessary.
+		FrameLayout.LayoutParams containerParams = (FrameLayout.LayoutParams) relativeLayoutField.getLayoutParams();
+		containerParams.leftMargin = leftInset;
+		containerParams.rightMargin = rightInset;
+		relativeLayoutField.setLayoutParams(containerParams);
+
+		relativeLayoutField.animate()
+				.y(-height)
+				.setDuration(100)
+				.setListener(new Animator.AnimatorListener() {
+					@Override
+					public void onAnimationCancel(Animator animation) {}
+
+					@Override
+					public void onAnimationRepeat(Animator animation) {}
+
+					@Override
+					public void onAnimationStart(Animator animation) {}
+
+					@Override
+					public void onAnimationEnd(Animator animation) {
+						if (getEditTextForNativeInput().isPopupShowing()) {
+							// In case it gets reopened
+							getEditTextForNativeInput().showDropDown();
+						}
+					}
+				});
+
+		// @on
+	}
+
+	private void createDefaultEditText () {
+		FrameLayout frameLayout = view.getRootView().findViewById(android.R.id.content);
+		final RelativeLayout relativeLayout = new RelativeLayout(context);
+		relativeLayout.setGravity(Gravity.BOTTOM);
+		// Why? Why isn't it working without?
+		relativeLayout.setBackgroundColor(Color.TRANSPARENT);
+
+		final AutoCompleteTextView editText = new AutoCompleteTextView(context) {
+
+			private int count = 0;
+
+			@Override
+			public void onFilterComplete (int count) {
+				this.count = count;
+				super.onFilterComplete(count);
+			}
+
+			@Override
+			public void showDropDown () {
+				int size = 165 * count;
+				if (size > relativeLayout.getHeight() + relativeLayout.getY() - getHeight())
+					size = (int)(relativeLayout.getHeight() + relativeLayout.getY() - getHeight());
+				if (size > 0) setDropDownHeight(size);
+				setDropDownVerticalOffset(-getDropDownHeight() - getHeight());
+				setDropDownWidth((int)(getWidth() * relativeLayout.getScaleX()));
+				super.showDropDown();
+			}
+
+			@Override
+			public boolean onKeyPreIme (int keyCode, android.view.KeyEvent event) {
+				if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK) {
+					Gdx.input.closeTextInputField(false);
+				}
+				return super.onKeyPreIme(keyCode, event);
+			}
+
+			@Override
+			public InputConnection onCreateInputConnection (EditorInfo outAttrs) {
+				return new InputConnectionWrapper(super.onCreateInputConnection(outAttrs), true) {
+
+					// Why? Is this correct handling? I mean, this can't be right! Why shouldn't it work out of the box?
+					// This is needed for multiline delete
+					@Override
+					public boolean sendKeyEvent (android.view.KeyEvent event) {
+						if (nativeInputConfiguration.isMultiLine() && event.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+							if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_DEL) {
+								super.deleteSurroundingText(1, 0);
+								return true;
+							} else if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER) {
+								commitText("\n", 0);
+								return true;
+							}
+						}
+
+						return super.sendKeyEvent(event);
+					}
+				};
+			}
+		};
+
+		RelativeLayout.LayoutParams editTextParams = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.MATCH_PARENT,
+			RelativeLayout.LayoutParams.WRAP_CONTENT);
+
+		editText.setLayoutParams(editTextParams);
+
+		relativeLayout.setVisibility(View.INVISIBLE);
+		relativeLayout.addView(editText);
+		relativeLayout.requestLayout();
+
+		frameLayout.addView(relativeLayout);
+		relativeLayoutField = relativeLayout;
+	}
+
+	private boolean isNativeInputOpen () {
+		return relativeLayoutField != null && relativeLayoutField.getVisibility() == View.VISIBLE;
+	}
+
+	private AutoCompleteTextView getEditTextForNativeInput () {
+		return (AutoCompleteTextView)relativeLayoutField.getChildAt(0);
+	}
+
+	private NativeInputConfiguration nativeInputConfiguration;
+
+	@Override
+	public void openTextInputField (final NativeInputConfiguration configuration) {
+		configuration.validate();
+		if (isNativeInputOpen()) throw new GdxRuntimeException("Can't open keyboard if already open with openTextInputField");
+
+		if (onscreenVisible) throw new GdxRuntimeException("Can't open keyboard if already open with setOnscreenKeyboardVisible");
+
+		this.nativeInputConfiguration = configuration;
+		handle.post(new Runnable() {
+			public void run () {
+				if (relativeLayoutField == null) createDefaultEditText();
+				final AutoCompleteTextView editText = getEditTextForNativeInput();
+				if (isNativeInputOpen()) return;
+
+				InputMethodManager manager = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
+
+				// Potential cleanup
+				if (relativeLayoutField.getChildCount() > 1)
+					relativeLayoutField.removeViews(1, relativeLayoutField.getChildCount() - 1);
+
+				editText.setOnEditorActionListener(new OnEditorActionListener() {
+					@Override
+					public boolean onEditorAction (TextView textView, int actionId, android.view.KeyEvent keyEvent) {
+						if (actionId == EditorInfo.IME_ACTION_DONE) {
+							Gdx.input.closeTextInputField(true);
+							return true;
+						}
+						return true;
+					}
+				});
+
+				// Needs to be done first, for some reason...
+				if (!configuration.isMaskInput()) {
+					editText.setTransformationMethod(null);
+				}
+
+				editText.setInputType(getAndroidInputType(configuration.getType(), false));
+
+				if (configuration.isPreventCorrection()) {
+					editText.setInputType(editText.getInputType() | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+					editText.setInputType(editText.getInputType() & ~InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+				} else {
+					editText.setInputType(
+						editText.getInputType() | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES | InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
+				}
+
+				editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
+				if (configuration.isMultiLine()) {
+					editText.setInputType(editText.getInputType() | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+					editText.setImeOptions(editText.getImeOptions() | EditorInfo.IME_FLAG_NO_FULLSCREEN);
+					// For cursor control support
+					editText.setWidth(Gdx.graphics.getWidth());
+					editText.setLines(3);
+				} else {
+					editText.setImeOptions(editText.getImeOptions() | EditorInfo.IME_FLAG_NO_FULLSCREEN);
+					editText.setSingleLine();
+				}
+				// Reset filters to not run into a issue, where the max length filter messes with setText
+				// But, we can't set the correct filters here, because that leads to problems for some apparent reason nobody will
+				// ever understand
+				editText.setFilters(new InputFilter[] {});
+				editText.setText(configuration.getTextInputWrapper().getText());
+				editText.setHint(configuration.getPlaceholder());
+
+				InputFilter filter = new InputFilter() {
+					@Override
+					public CharSequence filter (CharSequence source, int start, int end, Spanned dest, int dstart, int dend) {
+						boolean keepOriginal = true;
+						StringBuilder sb = new StringBuilder(end - start);
+						for (int i = start; i < end; i++) {
+							char c = source.charAt(i);
+							// TODO: 02.08.2022 There is a backend incosistenty between iOS and android. On Autocomplete
+							// iOS would delete whole words, while android only deletes characters. We should make it
+							// consistent. However that seems not that trivial and it first needs to be decided, which
+							// behavior the correct one is.
+							if (configuration.getValidator() == null || configuration.getValidator().validate(c + ""))
+								sb.append(c);
+							else
+								keepOriginal = false;
+						}
+						if (keepOriginal)
+							return null;
+						else {
+							if (source instanceof Spanned) {
+								SpannableString sp = new SpannableString(sb);
+								TextUtils.copySpansFrom((Spanned)source, start, sb.length(), null, sp, 0);
+								return sp;
+							} else {
+								return sb;
+							}
+						}
+					}
+				};
+				InputFilter[] filters = new InputFilter[] {filter};
+				if (configuration.getMaxLength() != -1) {
+					filters = new InputFilter[] {filter, new LengthFilter(configuration.getMaxLength())};
+				}
+
+				editText.setFilters(filters);
+
+				if (configuration.getAutoComplete() != null) {
+					ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_dropdown_item_1line,
+						configuration.getAutoComplete());
+					editText.setAdapter(adapter);
+				} else {
+					editText.setAdapter(null);
+				}
+
+				editText.setBackgroundColor(Color.WHITE);
+
+				if (configuration.isMaskInput()) {
+					// For some reason this needs to be done last, otherwise it won't work
+					editText.setTransformationMethod(PasswordTransformationMethod.getInstance());
+					if (configuration.isShowUnmaskButton()) {
+						final ImageView imageView = new ImageView(context);
+
+						imageView.setImageResource(com.badlogic.gdx.backends.android.R.drawable.design_ic_visibility);
+						RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT,
+							RelativeLayout.LayoutParams.WRAP_CONTENT);
+						params.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+						params.rightMargin = 10;
+						params.height = editText.getHeight();
+						params.width = editText.getHeight();
+
+						imageView.setLayoutParams(params);
+						imageView.setOnClickListener(new View.OnClickListener() {
+							private boolean isHidding = true;
+
+							@Override
+							public void onClick (View v) {
+								int start = editText.getSelectionStart();
+								int end = editText.getSelectionStart();
+								isHidding = !isHidding;
+								if (isHidding) {
+									editText.setTransformationMethod(PasswordTransformationMethod.getInstance());
+									imageView.setImageResource(com.badlogic.gdx.backends.android.R.drawable.design_ic_visibility);
+								} else {
+									editText.setTransformationMethod(null);
+									imageView.setImageResource(com.badlogic.gdx.backends.android.R.drawable.design_ic_visibility_off);
+								}
+								// Seems to get reset by "setTransformationMethod"
+								editText.setSelection(start, end);
+							}
+						});
+						imageView.setAlpha(0.5f);
+						imageView.setPadding(5, 5, 5, 5);
+						relativeLayoutField.addView(imageView);
+					}
+				}
+
+				// One wonders why here? I don't know!
+				editText.setSelection(configuration.getTextInputWrapper().getSelectionStart(),
+					configuration.getTextInputWrapper().getSelectionEnd());
+
+				relativeLayoutField.setVisibility(View.VISIBLE);
+
+				editText.requestFocus();
+				manager.showSoftInput(editText, 0);
+			}
+		});
+	}
+
+	@Override
+	public void closeTextInputField (boolean isConfirmative, @Null NativeInputCloseCallback callback) {
+		if (!isNativeInputOpen()) return;
+		handle.post( () -> {
+			if (!isNativeInputOpen()) return;
+			view.requestFocus();
+
+			EditText editText = getEditTextForNativeInput();
+			String text = editText.getText().toString();
+			int selectionStart = editText.getSelectionStart();
+			int selectionEnd = editText.getSelectionEnd();
+			NativeInputConfiguration config = nativeInputConfiguration;
+
+			Gdx.app.postRunnable( () -> {
+				config.getTextInputWrapper().writeResults(text, selectionStart, selectionEnd);
+
+				boolean keepOpen = config.getCloseCallback().onClose(isConfirmative);
+				if (callback != null) keepOpen |= callback.onClose(isConfirmative);
+
+				if (!keepOpen) {
+					handle.post( () -> {
+						InputMethodManager manager = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
+						manager.hideSoftInputFromWindow(view.getWindowToken(), 0);
+					});
+				}
+			});
+
+			nativeInputConfiguration = null;
+
+			if (relativeLayoutField.getChildCount() > 1) relativeLayoutField.removeViews(1, relativeLayoutField.getChildCount() - 1);
+			relativeLayoutField.setVisibility(View.INVISIBLE);
+		});
+	}
+
+	@Override
+	public boolean isTextInputFieldOpened () {
+		return isNativeInputOpen();
+	}
+
+	private KeyboardHeightObserver observer;
+
+	@Override
+	public void setKeyboardHeightObserver (KeyboardHeightObserver observer) {
+		this.observer = observer;
+	}
+
 	@Override
 	public void vibrate (int milliseconds) {
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-			vibrator.vibrate(VibrationEffect.createOneShot(milliseconds, VibrationEffect.DEFAULT_AMPLITUDE));
-		else
-			vibrator.vibrate(milliseconds);
+		haptics.vibrate(milliseconds);
 	}
 
 	@Override
-	public void vibrate (long[] pattern, int repeat) {
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-			vibrator.vibrate(VibrationEffect.createWaveform(pattern, repeat));
-		else
-			vibrator.vibrate(pattern, repeat);
+	public void vibrate (int milliseconds, boolean fallback) {
+		haptics.vibrate(milliseconds);
 	}
 
 	@Override
-	public void cancelVibrate () {
-		vibrator.cancel();
+	public void vibrate (int milliseconds, int amplitude, boolean fallback) {
+		haptics.vibrate(milliseconds, amplitude, fallback);
+	}
+
+	@Override
+	public void vibrate (VibrationType vibrationType) {
+		haptics.vibrate(vibrationType);
 	}
 
 	@Override
@@ -705,7 +1105,7 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 	 * <a href= "http://developer.android.com/reference/android/hardware/SensorManager.html#getRotationMatrix(float[], float[],
 	 * float[], float[])" >SensorManager#getRotationMatrix(float[], float[], float[], float[])</a>. Does not manipulate the matrix
 	 * if the platform does not have an accelerometer and compass, or a rotation vector sensor.
-	 * @param matrix */
+	 * @param matrix the device's rotation matrix */
 	public void getRotationMatrix (float[] matrix) {
 		if (rotationVectorAvailable)
 			SensorManager.getRotationMatrixFromVector(matrix, rotationVectorValues);
@@ -831,7 +1231,8 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 		if (peripheral == Peripheral.Compass) return compassAvailable;
 		if (peripheral == Peripheral.HardwareKeyboard) return keyboardAvailable;
 		if (peripheral == Peripheral.OnscreenKeyboard) return true;
-		if (peripheral == Peripheral.Vibrator) return vibrator != null && vibrator.hasVibrator();
+		if (peripheral == Peripheral.Vibrator) return haptics.hasVibratorAvailable();
+		if (peripheral == Peripheral.HapticFeedback) return haptics.hasHapticsSupport();
 		if (peripheral == Peripheral.MultitouchScreen) return hasMultitouch;
 		if (peripheral == Peripheral.RotationVector) return rotationVectorAvailable;
 		if (peripheral == Peripheral.Pressure) return true;
@@ -882,7 +1283,7 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 
 		StringBuilder sb = new StringBuilder();
 		for (int i = 0; i < len; i++) {
-			sb.append(i + ":" + realId[i] + " ");
+			sb.append(i).append(":").append(realId[i]).append(" ");
 		}
 		Gdx.app.log("AndroidInput", "Pointer ID lookup failed: " + pointerId + ", " + sb.toString());
 		return -1;
@@ -976,12 +1377,6 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 	@Override
 	public void onPause () {
 		unregisterSensorListeners();
-
-		// erase pointer ids. this sucks donkeyballs...
-		Arrays.fill(realId, -1);
-
-		// erase touched state. this also sucks donkeyballs...
-		Arrays.fill(touched, false);
 	}
 
 	@Override
@@ -997,10 +1392,49 @@ public class DefaultAndroidInput extends AbstractInput implements AndroidInput {
 	@Override
 	public void onDreamingStopped () {
 		unregisterSensorListeners();
-		// erase pointer ids. this sucks donkeyballs...
-		Arrays.fill(realId, -1);
-		// erase touched state. this also sucks donkeyballs...
-		Arrays.fill(touched, false);
+	}
+
+	@Override
+	public void setCatchKey (int keycode, boolean catchKey) {
+		super.setCatchKey(keycode, catchKey);
+		if (keycode == Keys.BACK && predictiveBackHandler != null) {
+			if (catchKey)
+				predictiveBackHandler.register();
+			else
+				predictiveBackHandler.unregister();
+		}
+	}
+
+	/** Handle predictive back gestures on Android 13 and newer, replacing the <code>BACK</code> key event for exiting the
+	 * activity.
+	 * @see <a href="https://developer.android.com/guide/navigation/custom-back/predictive-back-gesture">Add support for the
+	 *      predictive back gesture - Android Developers</a> */
+	@TargetApi(33)
+	private class PredictiveBackHandler {
+
+		private final OnBackInvokedDispatcher dispatcher = ((Activity)context).getOnBackInvokedDispatcher();
+		private final OnBackInvokedCallback callback = new OnBackInvokedCallback() {
+			@Override
+			public void onBackInvoked () {
+				synchronized (DefaultAndroidInput.this) {
+					KeyEvent event = new KeyEvent();
+					event.timeStamp = System.nanoTime();
+					event.type = KeyEvent.KEY_DOWN;
+					event.keyCode = Keys.BACK;
+					event.keyChar = 0;
+					keyEvents.add(event);
+				}
+			}
+		};
+
+		private void register () {
+			dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+		}
+
+		private void unregister () {
+			dispatcher.unregisterOnBackInvokedCallback(callback);
+		}
+
 	}
 
 	/** Our implementation of SensorEventListener. Because Android doesn't like it when we register more than one Sensor to a

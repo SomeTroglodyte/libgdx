@@ -57,6 +57,7 @@ import javax.swing.event.DocumentListener;
 import com.badlogic.gdx.AbstractInput;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.InputProcessor;
+import com.badlogic.gdx.input.NativeInputConfiguration;
 import com.badlogic.gdx.utils.IntSet;
 import com.badlogic.gdx.utils.Pool;
 
@@ -423,6 +424,21 @@ public class LwjglAWTInput extends AbstractInput implements MouseMotionListener,
 
 	@Override
 	public void setOnscreenKeyboardVisible (boolean visible, OnscreenKeyboardType type) {
+
+	}
+
+	@Override
+	public void openTextInputField (NativeInputConfiguration configuration) {
+
+	}
+
+	@Override
+	public void closeTextInputField (boolean sendReturn) {
+
+	}
+
+	@Override
+	public void setKeyboardHeightObserver (KeyboardHeightObserver observer) {
 
 	}
 
@@ -848,6 +864,18 @@ public class LwjglAWTInput extends AbstractInput implements MouseMotionListener,
 	}
 
 	@Override
+	public void vibrate (int milliseconds, boolean fallback) {
+	}
+
+	@Override
+	public void vibrate (int milliseconds, int amplitude, boolean fallback) {
+	}
+
+	@Override
+	public void vibrate (VibrationType vibrationType) {
+	}
+
+	@Override
 	public boolean justTouched () {
 		return justTouched;
 	}
@@ -861,14 +889,6 @@ public class LwjglAWTInput extends AbstractInput implements MouseMotionListener,
 	public boolean isButtonJustPressed (int button) {
 		if (button < 0 || button >= justPressedButtons.length) return false;
 		return justPressedButtons[button];
-	}
-
-	@Override
-	public void vibrate (long[] pattern, int repeat) {
-	}
-
-	@Override
-	public void cancelVibrate () {
 	}
 
 	@Override

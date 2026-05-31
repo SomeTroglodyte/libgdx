@@ -1,12 +1,12 @@
 /*******************************************************************************
  * Copyright 2011 See AUTHORS file.
- *
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
+ * 
  *   http://www.apache.org/licenses/LICENSE-2.0
- *
+ * 
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,6 +21,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.backends.gwt.widgets.TextInputDialogBox;
 import com.badlogic.gdx.backends.gwt.widgets.TextInputDialogBox.TextInputDialogListener;
+import com.badlogic.gdx.input.NativeInputConfiguration;
 import com.badlogic.gdx.utils.IntMap;
 import com.badlogic.gdx.utils.IntSet;
 import com.badlogic.gdx.utils.IntSet.IntSetIterator;
@@ -267,6 +268,7 @@ public class DefaultGwtInput extends AbstractInput implements GwtInput {
 	public void getTextInput (TextInputListener listener, String title, String text, String hint, OnscreenKeyboardType type) {
 		TextInputDialogBox dialog = new TextInputDialogBox(title, text, hint);
 		final TextInputListener capturedListener = listener;
+		dialog.setInputType(getGwtInputType(type));
 		dialog.setListener(new TextInputDialogListener() {
 			@Override
 			public void onPositive (String text) {
@@ -284,6 +286,24 @@ public class DefaultGwtInput extends AbstractInput implements GwtInput {
 		});
 	}
 
+	public static String getGwtInputType (OnscreenKeyboardType type) {
+		switch (type) {
+		case NumberPad:
+			return "number";
+		case Email:
+			return "email";
+		case URI:
+			return "url";
+		case Password:
+			return "password";
+		case PhonePad:
+			return "tel";
+		case Default:
+		default:
+			return "text";
+		}
+	}
+
 	@Override
 	public void setOnscreenKeyboardVisible (boolean visible) {
 	}
@@ -293,15 +313,34 @@ public class DefaultGwtInput extends AbstractInput implements GwtInput {
 	}
 
 	@Override
+	public void openTextInputField (NativeInputConfiguration configuration) {
+
+	}
+
+	@Override
+	public void closeTextInputField (boolean sendReturn) {
+
+	}
+
+	@Override
+	public void setKeyboardHeightObserver (KeyboardHeightObserver observer) {
+
+	}
+
+	@Override
 	public void vibrate (int milliseconds) {
 	}
 
 	@Override
-	public void vibrate (long[] pattern, int repeat) {
+	public void vibrate (int milliseconds, boolean fallback) {
 	}
 
 	@Override
-	public void cancelVibrate () {
+	public void vibrate (int milliseconds, int amplitude, boolean fallback) {
+	}
+
+	@Override
+	public void vibrate (VibrationType vibrationType) {
 	}
 
 	@Override

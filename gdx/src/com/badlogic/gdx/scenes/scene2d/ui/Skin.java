@@ -38,6 +38,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.TiledDrawable;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
 import com.badlogic.gdx.utils.GdxRuntimeException;
+import com.badlogic.gdx.utils.IdentityMap;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.Json.ReadOnlySerializer;
 import com.badlogic.gdx.utils.JsonValue;
@@ -56,7 +57,7 @@ import com.badlogic.gdx.utils.reflect.ReflectionException;
  * See the <a href="https://libgdx.com/wiki/graphics/2d/scene2d/skin">documentation</a> for more.
  * @author Nathan Sweet */
 public class Skin implements Disposable {
-	ObjectMap<Class, ObjectMap<String, Object>> resources = new ObjectMap();
+	IdentityMap<Class, ObjectMap<String, Object>> resources = new IdentityMap();
 	TextureAtlas atlas;
 	float scale = 1;
 
@@ -415,10 +416,25 @@ public class Skin implements Disposable {
 	}
 
 	/** Sets the style on the actor to disabled or enabled. This is done by appending "-disabled" to the style name when enabled is
+	 * false, and removing "-disabled" from the style name when enabled is true. If the style was not found in the skin, an
+	 * exception is thrown. */
+	public <V> void setEnabled (Styleable<V> styleable, boolean enabled) {
+		V style = styleable.getStyle();
+
+		String name = find(style);
+		if (name == null) return;
+		name = name.replace("-disabled", "") + (enabled ? "" : "-disabled");
+		style = get(name, (Class<V>)style.getClass());
+
+		styleable.setStyle(style);
+	}
+
+	/** Sets the style on the actor to disabled or enabled. This is done by appending "-disabled" to the style name when enabled is
 	 * false, and removing "-disabled" from the style name when enabled is true. A method named "getStyle" is called the actor via
-	 * reflection and the name of that style is found in the skin. If the actor doesn't have a "getStyle" method or the style was
-	 * not found in the skin, no exception is thrown and the actor is left unchanged. */
-	public void setEnabled (Actor actor, boolean enabled) {
+	 * reflection and the name of that style is found in the skin. If the actor doesn't have a "getStyle" and "setStyle" method the
+	 * actor is left unchanged. If the style was not found in the skin, an exception is thrown. */
+	@Deprecated
+	public void setEnabledReflection (Actor actor, boolean enabled) {
 		// Get current style.
 		Method method = findMethod(actor.getClass(), "getStyle");
 		if (method == null) return;
@@ -469,8 +485,8 @@ public class Skin implements Disposable {
 				return super.readValue(type, elementType, jsonData);
 			}
 
-			protected boolean ignoreUnknownField (Class type, String fieldName) {
-				return fieldName.equals(parentFieldName);
+			protected boolean ignoreUnknownField (Object object, JsonValue value) {
+				return value.name.equals(parentFieldName);
 			}
 
 			public void readFields (Object object, JsonValue jsonMap) {
@@ -532,9 +548,10 @@ public class Skin implements Disposable {
 		json.setSerializer(BitmapFont.class, new ReadOnlySerializer<BitmapFont>() {
 			public BitmapFont read (Json json, JsonValue jsonData, Class type) {
 				String path = json.readValue("file", String.class, jsonData);
-				int scaledSize = json.readValue("scaledSize", int.class, -1, jsonData);
+				float scaledSize = json.readValue("scaledSize", float.class, -1f, jsonData);
 				Boolean flip = json.readValue("flip", Boolean.class, false, jsonData);
 				Boolean markupEnabled = json.readValue("markupEnabled", Boolean.class, false, jsonData);
+				Boolean useIntegerPositions = json.readValue("useIntegerPositions", Boolean.class, true, jsonData);
 
 				FileHandle fontFile = skinFile.parent().child(path);
 				if (!fontFile.exists()) fontFile = Gdx.files.internal(path);
@@ -560,6 +577,7 @@ public class Skin implements Disposable {
 						}
 					}
 					font.getData().markupEnabled = markupEnabled;
+					font.setUseIntegerPositions(useIntegerPositions);
 					// Scaled size is the desired cap height to scale the font to.
 					if (scaledSize != -1) font.getData().setScale(scaledSize / font.getCapHeight());
 					return font;

@@ -16,6 +16,9 @@
 
 package com.badlogic.gdx;
 
+import com.badlogic.gdx.input.NativeInputConfiguration;
+import com.badlogic.gdx.input.NativeInputConfiguration.NativeInputCloseCallback;
+import com.badlogic.gdx.utils.Null;
 import com.badlogic.gdx.utils.ObjectIntMap;
 
 /**
@@ -158,7 +161,7 @@ public interface Input {
 		public static final int SOFT_RIGHT = 2;
 		public static final int SPACE = 62;
 		public static final int STAR = 17;
-		public static final int SYM = 63;
+		public static final int SYM = 63; // on MacOS, this is Command (⌘)
 		public static final int T = 48;
 		public static final int TAB = 61;
 		public static final int U = 49;
@@ -225,6 +228,9 @@ public interface Input {
 		public static final int NUMPAD_LEFT_PAREN = 162;
 		public static final int NUMPAD_RIGHT_PAREN = 163;
 		public static final int NUM_LOCK = 143;
+
+		public static final int WORLD_1 = 240;
+		public static final int WORLD_2 = 241;
 
 // public static final int BACKTICK = 0;
 // public static final int TILDE = 0;
@@ -642,7 +648,7 @@ public interface Input {
 	/** Enumeration of potentially available peripherals. Use with {@link Input#isPeripheralAvailable(Peripheral)}.
 	 * @author mzechner */
 	public enum Peripheral {
-		HardwareKeyboard, OnscreenKeyboard, MultitouchScreen, Accelerometer, Compass, Vibrator, Gyroscope, RotationVector, Pressure
+		HardwareKeyboard, OnscreenKeyboard, MultitouchScreen, Accelerometer, Compass, Vibrator, HapticFeedback, Gyroscope, RotationVector, Pressure
 	}
 
 	/** @return The acceleration force in m/s^2 applied to the device in the X axis, including the force of gravity */
@@ -786,25 +792,103 @@ public interface Input {
 	 * @param type which type of keyboard we wish to display. Can be null when hiding */
 	public void setOnscreenKeyboardVisible (boolean visible, OnscreenKeyboardType type);
 
+	static interface InputStringValidator {
+		/** @param toCheck The string that should be validated
+		 * @return true, if the string is acceptable, false if not. */
+		boolean validate (String toCheck);
+	}
+
+	/** Sets the on-screen keyboard visible if available.
+	 *
+	 * @param configuration The configuration for the native input field */
+	public void openTextInputField (NativeInputConfiguration configuration);
+
+	/** Closes the native input field and applies the result to the input wrapper.
+	 * @param isConfirmative Whether the closing can be considered confirmative. Will be passed to the
+	 *           {@link NativeInputCloseCallback} */
+	public default void closeTextInputField (boolean isConfirmative) {
+		closeTextInputField(isConfirmative, null);
+	}
+
+	/** Closes the native input field and applies the result to the input wrapper.
+	 * @param isConfirmative Whether the closing can be considered confirmative. Will be passed to the
+	 *           {@link NativeInputCloseCallback}
+	 * @param callback An optional callback to also run, when the close was processed. Will be called on the main thread. Will be
+	 *           called after {@link NativeInputCloseCallback} */
+	public default void closeTextInputField (boolean isConfirmative, @Null NativeInputCloseCallback callback) {
+
+	}
+
+	/** Returns if a native input field is currently open */
+	public default boolean isTextInputFieldOpened () {
+		return false;
+	}
+
+	static interface KeyboardHeightObserver {
+		/** This will be called always with the keyboard height as observed by the operating system. This will include the EditField
+		 * height when {@link Input#openTextInputField} is used. This will be called after
+		 * {@link KeyboardHeightObserver#onKeyboardShow} or {@link KeyboardHeightObserver#onKeyboardHide} */
+		void onKeyboardHeightChanged (int height);
+
+		/** This will be called, if the keyboard is visible and will report the visible height. This will include the EditField
+		 * height when {@link Input#openTextInputField} is used. This may be called multiple times without closing, if the keyboard
+		 * reshapes. On android SDK < 30 and floating keyboards, this will be always called, even if the keyboard got invisible.
+		 * There is no way to track the keyboard visibleness in this specific configuration */
+		void onKeyboardShow (int height);
+
+		/** This will be called, when the keyboard is getting invisible. This method is best-effort on pre-android sdk 30. This
+		 * method will never be called on android SDK < 30 and floating keyboards. */
+		void onKeyboardHide ();
+	}
+
+	/** This will set a keyboard height callback. This will get called, whenever the keyboard height changes. Note: When using
+	 * openTextInputField, it will report the height of the native input field too. */
+	public void setKeyboardHeightObserver (KeyboardHeightObserver observer);
+
 	public enum OnscreenKeyboardType {
 		Default, NumberPad, PhonePad, Email, Password, URI
 	}
 
-	/** Vibrates for the given amount of time. Note that you'll need the permission
+	/** Generates a simple haptic effect of a given duration or a vibration effect on devices without haptic capabilities. Note
+	 * that on Android backend you'll need the permission
 	 * <code> <uses-permission android:name="android.permission.VIBRATE" /></code> in your manifest file in order for this to work.
+	 * On iOS backend you'll need to set <code>useHaptics = true</code> for devices with haptics capabilities to use them.
 	 * 
 	 * @param milliseconds the number of milliseconds to vibrate. */
 	public void vibrate (int milliseconds);
 
-	/** Vibrate with a given pattern. Pass in an array of ints that are the times at which to turn on or off the vibrator. The
-	 * first one is how long to wait before turning it on, and then after that it alternates. If you want to repeat, pass the index
-	 * into the pattern at which to start the repeat.
-	 * @param pattern an array of longs of times to turn the vibrator on or off.
-	 * @param repeat the index into pattern at which to repeat, or -1 if you don't want to repeat. */
-	public void vibrate (long[] pattern, int repeat);
+	/** Generates a simple haptic effect of a given duration and default amplitude. Note that on Android backend you'll need the
+	 * permission <code> <uses-permission android:name="android.permission.VIBRATE" /></code> in your manifest file in order for
+	 * this to work. On iOS backend you'll need to set <code>useHaptics = true</code> for devices with haptics capabilities to use
+	 * them.
+	 *
+	 * @param milliseconds the duration of the haptics effect
+	 * @param fallback whether to use non-haptic vibrator on devices without haptics capabilities (or haptics disabled). Fallback
+	 *           non-haptic vibrations may ignore length parameter in some backends. */
+	public void vibrate (int milliseconds, boolean fallback);
 
-	/** Stops the vibrator */
-	public void cancelVibrate ();
+	/** Generates a simple haptic effect of a given duration and amplitude. Note that on Android backend you'll need the permission
+	 * <code> <uses-permission android:name="android.permission.VIBRATE" /></code> in your manifest file in order for this to work.
+	 * On iOS backend you'll need to set <code>useHaptics = true</code> for devices with haptics capabilities to use them.
+	 *
+	 * @param milliseconds the duration of the haptics effect
+	 * @param amplitude the amplitude/strength of the haptics effect. Valid values in the range [0, 255].
+	 * @param fallback whether to use non-haptic vibrator on devices without haptics capabilities (or haptics disabled). Fallback
+	 *           non-haptic vibrations may ignore length and/or amplitude parameters in some backends. */
+	public void vibrate (int milliseconds, int amplitude, boolean fallback);
+
+	/** Generates a simple haptic effect of a type. VibrationTypes are length/amplitude haptic effect presets that depend on each
+	 * device and are defined by manufacturers. Should give most consistent results across devices and OSs. Note that on Android
+	 * backend you'll need the permission <code> <uses-permission android:name="android.permission.VIBRATE" /></code> in your
+	 * manifest file in order for this to work. On iOS backend you'll need to set <code>useHaptics = true</code> for devices with
+	 * haptics capabilities to use them.
+	 *
+	 * @param vibrationType the type of vibration */
+	public void vibrate (VibrationType vibrationType);
+
+	public enum VibrationType {
+		LIGHT, MEDIUM, HEAVY;
+	}
 
 	/** The azimuth is the angle of the device's orientation around the z-axis. The positive z-axis points towards the earths
 	 * center.
@@ -840,34 +924,6 @@ public interface Input {
 
 	/** @return the time of the event currently reported to the {@link InputProcessor}. */
 	public long getCurrentEventTime ();
-
-	/** @deprecated use {@link Input#setCatchKey(int keycode, boolean catchKey)} instead
-	 *
-	 *             Sets whether the BACK button on Android should be caught. This will prevent the app from being paused. Will have
-	 *             no effect on the desktop.
-	 *
-	 * @param catchBack whether to catch the back button */
-	@Deprecated
-	public void setCatchBackKey (boolean catchBack);
-
-	/** @deprecated use {@link Input#isCatchKey(int keycode)} instead
-	 * @return whether the back button is currently being caught */
-	@Deprecated
-	public boolean isCatchBackKey ();
-
-	/** @deprecated use {@link Input#setCatchKey(int keycode, boolean catchKey)} instead
-	 *
-	 *             Sets whether the MENU button on Android should be caught. This will prevent the onscreen keyboard to show up.
-	 *             Will have no effect on the desktop.
-	 * 
-	 * @param catchMenu whether to catch the menu button */
-	@Deprecated
-	public void setCatchMenuKey (boolean catchMenu);
-
-	/** @deprecated use {@link Input#isCatchKey(int keycode)} instead
-	 * @return whether the menu button is currently being caught */
-	@Deprecated
-	public boolean isCatchMenuKey ();
 
 	/** Sets whether the given key on Android or GWT should be caught. No effect on other platforms. All keys that are not caught
 	 * may be handled by other apps or background processes on Android, or may trigger default browser behaviour on GWT. For
